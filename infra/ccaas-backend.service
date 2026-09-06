@@ -1,0 +1,18 @@
+[Unit]
+Description=ccaas backend (Claude Code as a service)
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=ccaas
+Group=ccaas
+WorkingDirectory=/opt/ccaas/apps/backend
+EnvironmentFile=/opt/ccaas/apps/backend/.env
+ExecStart=/usr/bin/node /opt/ccaas/apps/backend/src/server.js
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

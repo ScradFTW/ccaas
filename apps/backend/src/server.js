@@ -52,7 +52,7 @@ ensureEgressProxy()
   .catch((err) => console.error('failed to start egress proxy on boot', err))
   .finally(() => {
     startIdleSweep();
-    server.listen(config.port, () => {
-      console.log(`ccaas-backend listening on :${config.port}`);
+    server.listen(config.port, '127.0.0.1', () => {
+      console.log(`ccaas-backend listening on 127.0.0.1:${config.port}`);
     });
   });

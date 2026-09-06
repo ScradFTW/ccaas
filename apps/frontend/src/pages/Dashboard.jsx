@@ -4,6 +4,7 @@ import { ClaudeLogin } from '../components/ClaudeLogin';
 import { Settings } from './Settings';
 import { Scheduled } from './Scheduled';
 import { Files } from './Files';
+import { Publish } from './Publish';
 import { api } from '../api';
 
 export function Dashboard({ email, onLogout }) {
@@ -49,6 +50,9 @@ export function Dashboard({ email, onLogout }) {
           <button className="link" onClick={() => setView('files')}>
             Files
           </button>
+          <button className="link" onClick={() => setView('publish')}>
+            Publish
+          </button>
           <button className="link" onClick={() => setView('settings')}>
             Settings
           </button>
@@ -62,6 +66,7 @@ export function Dashboard({ email, onLogout }) {
         {view === 'settings' && <Settings onClose={() => setView('chat')} />}
         {view === 'scheduled' && <Scheduled onClose={() => setView('chat')} />}
         {view === 'files' && <Files onClose={() => setView('chat')} />}
+        {view === 'publish' && <Publish onClose={() => setView('chat')} />}
 
         {view === 'chat' && starting && (
           <div className="centered">

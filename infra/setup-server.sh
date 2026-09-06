@@ -56,6 +56,17 @@ if ! grep -q "snippets/ccaas.conf" /etc/nginx/sites-available/default; then
   echo "      /etc/nginx/sites-available/default, then run: nginx -t && systemctl reload nginx"
 fi
 
+echo "== User-published sites (bradjobe.dev/sites/<slug>) =="
+mkdir -p /etc/nginx/ccaas-sites
+chown ccaas:ccaas /etc/nginx/ccaas-sites
+if ! grep -rq "ccaas-sites" /etc/nginx/sites-available/default /etc/nginx/sites-enabled/* 2>/dev/null; then
+  echo "NOTE: add 'include /etc/nginx/ccaas-sites/*.conf;' inside the same server { }"
+  echo "      block as the /ccaas/ location, then: nginx -t && systemctl reload nginx"
+fi
+cp "$APP_DIR/infra/ccaas-nginx-reload.sudoers" /etc/sudoers.d/ccaas-nginx-reload
+chmod 440 /etc/sudoers.d/ccaas-nginx-reload
+visudo -c
+
 cat <<'EOF'
 
 == Manual steps remaining ==

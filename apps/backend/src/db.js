@@ -40,6 +40,13 @@ db.exec(`
     last_is_error INTEGER,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS published_sites (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id),
+    slug TEXT UNIQUE NOT NULL,
+    source_dir TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `);
 
 const DEFAULT_ALLOWLIST = [
@@ -138,4 +145,23 @@ export function recordCronRun(id, { sessionId, nextRunAt, lastResult, lastIsErro
      SET session_id = ?, next_run_at = ?, last_run_at = datetime('now'), last_result = ?, last_is_error = ?
      WHERE id = ?`
   ).run(sessionId, nextRunAt, lastResult, lastIsError ? 1 : 0, id);
+}
+
+export function getPublishedSite(userId) {
+  return db.prepare('SELECT * FROM published_sites WHERE user_id = ?').get(userId) || null;
+}
+
+export function findSiteBySlug(slug) {
+  return db.prepare('SELECT * FROM published_sites WHERE slug = ?').get(slug) || null;
+}
+
+export function upsertPublishedSite(userId, { slug, sourceDir }) {
+  db.prepare(
+    `INSERT INTO published_sites (user_id, slug, source_dir, updated_at) VALUES (?, ?, ?, datetime('now'))
+     ON CONFLICT(user_id) DO UPDATE SET slug = excluded.slug, source_dir = excluded.source_dir, updated_at = excluded.updated_at`
+  ).run(userId, slug, sourceDir);
+}
+
+export function deletePublishedSite(userId) {
+  db.prepare('DELETE FROM published_sites WHERE user_id = ?').run(userId);
 }

@@ -49,6 +49,14 @@ export const api = {
       body: JSON.stringify({ enabled }),
     }),
   deleteCronJob: (id) => request(`/api/cron/${id}`, { method: 'DELETE' }),
+  getSite: () => request('/api/sites'),
+  publishSite: (slug, sourceDir) =>
+    request('/api/sites', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug, sourceDir }),
+    }),
+  unpublishSite: () => request('/api/sites', { method: 'DELETE' }),
   getEgress: () => request('/api/settings/egress'),
   setEgress: (mode, domains) =>
     request('/api/settings/egress', {

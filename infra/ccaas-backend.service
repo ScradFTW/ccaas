@@ -12,7 +12,10 @@ EnvironmentFile=/opt/ccaas/apps/backend/.env
 ExecStart=/usr/bin/node /opt/ccaas/apps/backend/src/server.js
 Restart=on-failure
 RestartSec=3
-NoNewPrivileges=true
+# Not NoNewPrivileges: the backend needs `sudo` to reload nginx when a user
+# publishes a site (see sites.js). That sudo access is scoped to exactly
+# `nginx -t` and `systemctl reload nginx` via /etc/sudoers.d/ccaas-nginx-reload,
+# nothing broader.
 
 [Install]
 WantedBy=multi-user.target

@@ -1,6 +1,17 @@
 import express from 'express';
 import { requireAuth } from '../session.js';
-import { getEgressSettings, setEgressSettings, listCronJobs, createCronJob, deleteCronJob, setCronJobEnabled } from '../db.js';
+import {
+  getEgressSettings,
+  setEgressSettings,
+  listCronJobs,
+  createCronJob,
+  deleteCronJob,
+  setCronJobEnabled,
+  getPublishedSite,
+  findSiteBySlug,
+  upsertPublishedSite,
+  deletePublishedSite,
+} from '../db.js';
 import { writeUserAclFile, reconfigureSquid, sanitizeDomains, ensureAclFileForUser } from '../squid.js';
 import { touch } from '../activity.js';
 import {
@@ -14,6 +25,7 @@ import { getAuthStatus, startLogin, submitLoginCode } from '../claudeAuth.js';
 import { nextRunAtIso } from '../cronScheduler.js';
 import { resetChatSession } from '../claudeChat.js';
 import { listDir, downloadFile } from '../files.js';
+import { validateSlug, validateSourceDir, writeSiteConfig, removeSiteConfig, reloadNginx } from '../sites.js';
 
 export const apiRouter = express.Router();
 apiRouter.use(requireAuth);
@@ -133,6 +145,53 @@ apiRouter.get('/files/download', async (req, res) => {
     if (err.message === 'invalid_path') return res.status(400).json({ error: 'invalid_path' });
     console.error('download file failed', err);
     res.status(500).json({ error: 'download_failed' });
+  }
+});
+
+apiRouter.get('/sites', (req, res) => {
+  res.json(getPublishedSite(req.user.uid));
+});
+
+apiRouter.post('/sites', express.json(), async (req, res) => {
+  let slug, sourceDir;
+  try {
+    slug = validateSlug(String(req.body?.slug || '').trim().toLowerCase());
+    sourceDir = validateSourceDir(req.body?.sourceDir);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+
+  const existing = findSiteBySlug(slug);
+  if (existing && existing.user_id !== req.user.uid) {
+    return res.status(409).json({ error: 'slug_taken' });
+  }
+
+  try {
+    const previous = getPublishedSite(req.user.uid);
+    if (previous && previous.slug !== slug) removeSiteConfig(previous.slug);
+
+    await writeSiteConfig(req.user.uid, slug, sourceDir);
+    await reloadNginx();
+    upsertPublishedSite(req.user.uid, { slug, sourceDir });
+    res.json({ ok: true, slug, sourceDir, url: `https://bradjobe.dev/sites/${slug}/` });
+  } catch (err) {
+    console.error('publish site failed', err);
+    res.status(500).json({ error: 'publish_failed' });
+  }
+});
+
+apiRouter.delete('/sites', async (req, res) => {
+  const existing = getPublishedSite(req.user.uid);
+  if (!existing) return res.json({ ok: true });
+
+  try {
+    removeSiteConfig(existing.slug);
+    await reloadNginx();
+    deletePublishedSite(req.user.uid);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('unpublish site failed', err);
+    res.status(500).json({ error: 'unpublish_failed' });
   }
 });
 

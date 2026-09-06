@@ -32,6 +32,23 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code }),
     }),
+  resetChat: () => request('/api/chat/reset', { method: 'POST' }),
+  listFiles: (path) => request(`/api/files?path=${encodeURIComponent(path || '')}`),
+  downloadFileUrl: (path) => `${BASE}/api/files/download?path=${encodeURIComponent(path)}`,
+  listCronJobs: () => request('/api/cron'),
+  createCronJob: (prompt, cronExpr) =>
+    request('/api/cron', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, cronExpr }),
+    }),
+  setCronJobEnabled: (id, enabled) =>
+    request(`/api/cron/${id}/enabled`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    }),
+  deleteCronJob: (id) => request(`/api/cron/${id}`, { method: 'DELETE' }),
   getEgress: () => request('/api/settings/egress'),
   setEgress: (mode, domains) =>
     request('/api/settings/egress', {

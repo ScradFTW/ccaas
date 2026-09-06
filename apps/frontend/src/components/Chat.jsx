@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { deriveChatItems, splitCodeSegments } from '../chatEvents';
+import { api } from '../api';
 
 function RichText({ text }) {
   const segments = splitCodeSegments(text);
@@ -133,8 +134,22 @@ export function Chat() {
     }
   }
 
+  async function newChat() {
+    if (!window.confirm('Start a new conversation? Your files are untouched, only chat history resets.')) return;
+    await api.resetChat();
+    setEvents([]);
+    setBusy(false);
+    setFatal('');
+    wsRef.current?.close();
+  }
+
   return (
     <div className="chat">
+      <div className="chat-toolbar">
+        <button className="link" onClick={newChat}>
+          + New chat
+        </button>
+      </div>
       <div className="chat-scroll" ref={scrollRef}>
         {items.map((item) => (
           <ChatItem key={item.id} item={item} />

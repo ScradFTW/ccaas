@@ -41,3 +41,44 @@ export function makeLineSplitter(onLine) {
     }
   };
 }
+
+// Like collectUntilClose, but keeps stdout separate from stderr -- for
+// commands whose stdout must be parsed as clean JSON, where stderr (e.g.
+// warnings) must not get interleaved into that buffer.
+export function collectStdoutUntilClose(stream, stdout, stderr, timeoutMs = 15000) {
+  return new Promise((resolve) => {
+    let out = '';
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      resolve(out);
+    };
+    stdout.on('data', (c) => (out += c.toString('utf8')));
+    stderr.on('data', () => {}); // drained so it can't block the pipe; not logged here
+    stream.on('end', finish);
+    stream.on('close', finish);
+    setTimeout(finish, timeoutMs);
+  });
+}
+
+// Resolves with all buffered output once the underlying docker exec
+// connection itself closes (the process exited), not once the demuxed
+// PassThrough happens to emit 'close' -- that's not guaranteed to fire on
+// its own. A timeout is a safety net in case the process hangs open.
+export function collectUntilClose(stream, stdout, stderr, timeoutMs = 15000) {
+  return new Promise((resolve) => {
+    let buf = '';
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      resolve(buf);
+    };
+    stdout.on('data', (c) => (buf += c.toString('utf8')));
+    stderr.on('data', (c) => (buf += c.toString('utf8')));
+    stream.on('end', finish);
+    stream.on('close', finish);
+    setTimeout(finish, timeoutMs);
+  });
+}

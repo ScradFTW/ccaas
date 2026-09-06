@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { execInContainer, makeLineSplitter } from './dockerExec.js';
 import { containerNameForUser } from './docker.js';
-import { getClaudeSessionId, setClaudeSessionId } from './db.js';
+import { getClaudeSessionId, setClaudeSessionId, clearClaudeSessionId } from './db.js';
 import { touch } from './activity.js';
 
 // One persistent `claude -p --input-format stream-json` process per user,
@@ -78,6 +78,17 @@ export async function getOrCreateChatSession(userId) {
   const existing = sessions.get(userId);
   if (existing && !existing.ended) return existing;
   return spawnChatProcess(userId);
+}
+
+// Ends the live process (if any) and forgets the stored session id, so the
+// next connection starts a genuinely fresh conversation.
+export function resetChatSession(userId) {
+  const existing = sessions.get(userId);
+  if (existing) {
+    existing.stream.destroy();
+    sessions.delete(userId);
+  }
+  clearClaudeSessionId(userId);
 }
 
 export function sendChatMessage(session, text) {

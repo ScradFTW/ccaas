@@ -9,6 +9,7 @@ import { apiRouter } from './routes/api.js';
 import { getSessionFromRequest } from './session.js';
 import { handleChatConnection } from './chatSocket.js';
 import { startIdleSweep } from './idleSweep.js';
+import { startCronScheduler } from './cronScheduler.js';
 import { ensureEgressProxy } from './docker.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -52,6 +53,7 @@ ensureEgressProxy()
   .catch((err) => console.error('failed to start egress proxy on boot', err))
   .finally(() => {
     startIdleSweep();
+    startCronScheduler();
     server.listen(config.port, '127.0.0.1', () => {
       console.log(`ccaas-backend listening on 127.0.0.1:${config.port}`);
     });

@@ -26,6 +26,20 @@ db.exec(`
     user_id INTEGER PRIMARY KEY REFERENCES users(id),
     session_id TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS cron_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    prompt TEXT NOT NULL,
+    cron_expr TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    session_id TEXT,
+    next_run_at TEXT NOT NULL,
+    last_run_at TEXT,
+    last_result TEXT,
+    last_is_error INTEGER,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `);
 
 const DEFAULT_ALLOWLIST = [
@@ -78,9 +92,50 @@ export function getClaudeSessionId(userId) {
   return row ? row.session_id : null;
 }
 
+export function clearClaudeSessionId(userId) {
+  db.prepare('DELETE FROM claude_sessions WHERE user_id = ?').run(userId);
+}
+
 export function setClaudeSessionId(userId, sessionId) {
   db.prepare(
     `INSERT INTO claude_sessions (user_id, session_id) VALUES (?, ?)
      ON CONFLICT(user_id) DO UPDATE SET session_id = excluded.session_id`
   ).run(userId, sessionId);
+}
+
+export function listCronJobs(userId) {
+  return db.prepare('SELECT * FROM cron_jobs WHERE user_id = ? ORDER BY id').all(userId);
+}
+
+export function createCronJob({ userId, prompt, cronExpr, nextRunAt }) {
+  const info = db
+    .prepare(
+      `INSERT INTO cron_jobs (user_id, prompt, cron_expr, next_run_at) VALUES (?, ?, ?, ?)`
+    )
+    .run(userId, prompt, cronExpr, nextRunAt);
+  return db.prepare('SELECT * FROM cron_jobs WHERE id = ?').get(info.lastInsertRowid);
+}
+
+export function deleteCronJob(userId, id) {
+  db.prepare('DELETE FROM cron_jobs WHERE id = ? AND user_id = ?').run(id, userId);
+}
+
+export function setCronJobEnabled(userId, id, enabled) {
+  db.prepare('UPDATE cron_jobs SET enabled = ? WHERE id = ? AND user_id = ?').run(
+    enabled ? 1 : 0,
+    id,
+    userId
+  );
+}
+
+export function getDueCronJobs(nowIso) {
+  return db.prepare('SELECT * FROM cron_jobs WHERE enabled = 1 AND next_run_at <= ?').all(nowIso);
+}
+
+export function recordCronRun(id, { sessionId, nextRunAt, lastResult, lastIsError }) {
+  db.prepare(
+    `UPDATE cron_jobs
+     SET session_id = ?, next_run_at = ?, last_run_at = datetime('now'), last_result = ?, last_is_error = ?
+     WHERE id = ?`
+  ).run(sessionId, nextRunAt, lastResult, lastIsError ? 1 : 0, id);
 }

@@ -1,13 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Chat } from '../components/Chat';
 import { ClaudeLogin } from '../components/ClaudeLogin';
 import { Settings } from './Settings';
+import { Scheduled } from './Scheduled';
+import { Files } from './Files';
 import { api } from '../api';
 
 export function Dashboard({ email, onLogout }) {
   const [view, setView] = useState('chat');
   const [started, setStarted] = useState(false);
-  const [starting, setStarting] = useState(false);
+  const [starting, setStarting] = useState(true);
   const [error, setError] = useState('');
   const [claudeLoggedIn, setClaudeLoggedIn] = useState(null);
 
@@ -26,6 +28,13 @@ export function Dashboard({ email, onLogout }) {
     }
   }
 
+  // Get people going with zero clicks: the sandbox spins up automatically
+  // as soon as the dashboard loads, instead of waiting on a button press.
+  useEffect(() => {
+    start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className="dashboard">
       <header>
@@ -33,6 +42,12 @@ export function Dashboard({ email, onLogout }) {
         <nav>
           <button className="link" onClick={() => setView('chat')}>
             Chat
+          </button>
+          <button className="link" onClick={() => setView('scheduled')}>
+            Scheduled
+          </button>
+          <button className="link" onClick={() => setView('files')}>
+            Files
           </button>
           <button className="link" onClick={() => setView('settings')}>
             Settings
@@ -45,13 +60,23 @@ export function Dashboard({ email, onLogout }) {
 
       <main>
         {view === 'settings' && <Settings onClose={() => setView('chat')} />}
+        {view === 'scheduled' && <Scheduled onClose={() => setView('chat')} />}
+        {view === 'files' && <Files onClose={() => setView('chat')} />}
 
-        {view === 'chat' && !started && (
+        {view === 'chat' && starting && (
           <div className="centered">
             <div className="card">
-              <p>Start your Claude Code sandbox to begin.</p>
-              <button className="button" onClick={start} disabled={starting}>
-                {starting ? 'Starting...' : 'Start session'}
+              <p>Setting up your sandbox…</p>
+            </div>
+          </div>
+        )}
+
+        {view === 'chat' && !starting && !started && (
+          <div className="centered">
+            <div className="card">
+              <p>Something went wrong starting your sandbox.</p>
+              <button className="button" onClick={start}>
+                Try again
               </button>
               {error && <p className="error">{error}</p>}
             </div>

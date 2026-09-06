@@ -1,28 +1,7 @@
-import { execInContainer } from './dockerExec.js';
+import { execInContainer, collectUntilClose } from './dockerExec.js';
 import { containerNameForUser } from './docker.js';
 
 const pendingLogins = new Map(); // userId -> { stream, stdout, stderr }
-
-// Resolves once the underlying docker exec connection itself closes (the
-// process exited), not once the demuxed PassThrough happens to emit
-// 'close' -- that's not guaranteed to fire on its own. A timeout is a
-// safety net in case the process hangs open for some reason.
-function collectUntilClose(stream, stdout, stderr, timeoutMs = 10000) {
-  return new Promise((resolve) => {
-    let buf = '';
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      resolve(buf);
-    };
-    stdout.on('data', (c) => (buf += c.toString('utf8')));
-    stderr.on('data', (c) => (buf += c.toString('utf8')));
-    stream.on('end', finish);
-    stream.on('close', finish);
-    setTimeout(finish, timeoutMs);
-  });
-}
 
 export async function getAuthStatus(userId) {
   const { stream, stdout, stderr } = await execInContainer(containerNameForUser(userId), [
@@ -30,7 +9,7 @@ export async function getAuthStatus(userId) {
     'auth',
     'status',
   ]);
-  const output = await collectUntilClose(stream, stdout, stderr);
+  const output = await collectUntilClose(stream, stdout, stderr, 10000);
   try {
     return JSON.parse(output);
   } catch {

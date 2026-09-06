@@ -21,6 +21,11 @@ db.exec(`
     mode TEXT NOT NULL CHECK (mode IN ('allow', 'block')),
     domains TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS claude_sessions (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id),
+    session_id TEXT NOT NULL
+  );
 `);
 
 const DEFAULT_ALLOWLIST = [
@@ -66,4 +71,16 @@ export function setEgressSettings(userId, { mode, domains }) {
     `INSERT INTO egress_settings (user_id, mode, domains) VALUES (?, ?, ?)
      ON CONFLICT(user_id) DO UPDATE SET mode = excluded.mode, domains = excluded.domains`
   ).run(userId, mode, JSON.stringify(domains));
+}
+
+export function getClaudeSessionId(userId) {
+  const row = db.prepare('SELECT session_id FROM claude_sessions WHERE user_id = ?').get(userId);
+  return row ? row.session_id : null;
+}
+
+export function setClaudeSessionId(userId, sessionId) {
+  db.prepare(
+    `INSERT INTO claude_sessions (user_id, session_id) VALUES (?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET session_id = excluded.session_id`
+  ).run(userId, sessionId);
 }

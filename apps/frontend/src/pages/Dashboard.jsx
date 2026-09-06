@@ -1,13 +1,15 @@
 import { useState } from 'react';
-import { TerminalView } from '../components/Terminal';
+import { Chat } from '../components/Chat';
+import { ClaudeLogin } from '../components/ClaudeLogin';
 import { Settings } from './Settings';
 import { api } from '../api';
 
 export function Dashboard({ email, onLogout }) {
-  const [view, setView] = useState('terminal');
+  const [view, setView] = useState('chat');
   const [started, setStarted] = useState(false);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState('');
+  const [claudeLoggedIn, setClaudeLoggedIn] = useState(null);
 
   async function start() {
     setStarting(true);
@@ -15,6 +17,8 @@ export function Dashboard({ email, onLogout }) {
     try {
       await api.sessionStart();
       setStarted(true);
+      const status = await api.claudeAuthStatus();
+      setClaudeLoggedIn(Boolean(status.loggedIn));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -27,8 +31,8 @@ export function Dashboard({ email, onLogout }) {
       <header>
         <span>{email}</span>
         <nav>
-          <button className="link" onClick={() => setView('terminal')}>
-            Terminal
+          <button className="link" onClick={() => setView('chat')}>
+            Chat
           </button>
           <button className="link" onClick={() => setView('settings')}>
             Settings
@@ -40,9 +44,9 @@ export function Dashboard({ email, onLogout }) {
       </header>
 
       <main>
-        {view === 'settings' && <Settings onClose={() => setView('terminal')} />}
+        {view === 'settings' && <Settings onClose={() => setView('chat')} />}
 
-        {view === 'terminal' && !started && (
+        {view === 'chat' && !started && (
           <div className="centered">
             <div className="card">
               <p>Start your Claude Code sandbox to begin.</p>
@@ -54,7 +58,11 @@ export function Dashboard({ email, onLogout }) {
           </div>
         )}
 
-        {view === 'terminal' && started && <TerminalView />}
+        {view === 'chat' && started && claudeLoggedIn === false && (
+          <ClaudeLogin onLoggedIn={() => setClaudeLoggedIn(true)} />
+        )}
+
+        {view === 'chat' && started && claudeLoggedIn === true && <Chat />}
       </main>
     </div>
   );

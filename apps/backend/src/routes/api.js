@@ -10,6 +10,7 @@ import {
   ServerAtCapacityError,
   ensureEgressProxy,
 } from '../docker.js';
+import { getAuthStatus, startLogin, submitLoginCode } from '../claudeAuth.js';
 
 export const apiRouter = express.Router();
 apiRouter.use(requireAuth);
@@ -42,6 +43,36 @@ apiRouter.post('/session/start', async (req, res) => {
 apiRouter.post('/session/stop', async (req, res) => {
   await stopUserContainer(req.user.uid);
   res.json({ ok: true });
+});
+
+apiRouter.get('/claude-auth/status', async (req, res) => {
+  try {
+    res.json(await getAuthStatus(req.user.uid));
+  } catch (err) {
+    console.error('claude auth status failed', err);
+    res.status(500).json({ error: 'status_failed' });
+  }
+});
+
+apiRouter.post('/claude-auth/login/start', express.json(), async (req, res) => {
+  try {
+    const url = await startLogin(req.user.uid, { useConsole: Boolean(req.body?.useConsole) });
+    res.json({ url });
+  } catch (err) {
+    console.error('claude auth login start failed', err);
+    res.status(500).json({ error: err.message || 'login_start_failed' });
+  }
+});
+
+apiRouter.post('/claude-auth/login/code', express.json(), async (req, res) => {
+  const code = String(req.body?.code || '').trim();
+  if (!code) return res.status(400).json({ error: 'code_required' });
+  try {
+    res.json(await submitLoginCode(req.user.uid, code));
+  } catch (err) {
+    console.error('claude auth login code failed', err);
+    res.status(500).json({ error: err.message || 'login_code_failed' });
+  }
 });
 
 apiRouter.get('/settings/egress', (req, res) => {

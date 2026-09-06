@@ -7,7 +7,7 @@ import { config } from './config.js';
 import { authRouter } from './routes/auth.js';
 import { apiRouter } from './routes/api.js';
 import { getSessionFromRequest } from './session.js';
-import { handleTerminalConnection } from './terminal.js';
+import { handleChatConnection } from './chatSocket.js';
 import { startIdleSweep } from './idleSweep.js';
 import { ensureEgressProxy } from './docker.js';
 
@@ -28,7 +28,7 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
 
 server.on('upgrade', (req, socket, head) => {
-  if (req.url !== '/ws/terminal') {
+  if (req.url !== '/ws/chat') {
     socket.destroy();
     return;
   }
@@ -41,8 +41,8 @@ server.on('upgrade', (req, socket, head) => {
   }
 
   wss.handleUpgrade(req, socket, head, (ws) => {
-    handleTerminalConnection(ws, session.uid).catch((err) => {
-      console.error('terminal connection failed', err);
+    handleChatConnection(ws, session.uid).catch((err) => {
+      console.error('chat connection failed', err);
       ws.close();
     });
   });

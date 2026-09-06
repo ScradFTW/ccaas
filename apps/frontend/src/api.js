@@ -19,6 +19,19 @@ export const api = {
   sessionStatus: () => request('/api/session/status'),
   sessionStart: () => request('/api/session/start', { method: 'POST' }),
   sessionStop: () => request('/api/session/stop', { method: 'POST' }),
+  claudeAuthStatus: () => request('/api/claude-auth/status'),
+  claudeLoginStart: (useConsole) =>
+    request('/api/claude-auth/login/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ useConsole }),
+    }),
+  claudeLoginCode: (code) =>
+    request('/api/claude-auth/login/code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    }),
   getEgress: () => request('/api/settings/egress'),
   setEgress: (mode, domains) =>
     request('/api/settings/egress', {

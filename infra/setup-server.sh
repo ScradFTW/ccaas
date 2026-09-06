@@ -29,8 +29,10 @@ docker build -t ccaas-sandbox:latest "$APP_DIR/docker/sandbox"
 docker build -t ccaas-egress-proxy:latest "$APP_DIR/docker/proxy"
 
 echo "== Installing backend dependencies =="
+# /opt/ccaas is root-owned (deployed by root); install as root, the ccaas
+# service user only needs read access to run it.
 cd "$APP_DIR/apps/backend"
-sudo -u ccaas npm install --omit=dev
+npm install --omit=dev
 
 echo "== Installing systemd unit =="
 cp "$APP_DIR/infra/ccaas-backend.service" /etc/systemd/system/ccaas-backend.service

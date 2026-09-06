@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from './config.js';
-import { docker, ipForUser, PROXY_CONTAINER_NAME } from './docker.js';
+import { docker, userIpForUser, PROXY_CONTAINER_NAME } from './docker.js';
 import { getEgressSettings } from './db.js';
 
 const HOSTNAME_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/i;
@@ -20,7 +20,7 @@ function aclFilePath(userId) {
 export function writeUserAclFile(userId, { mode, domains }) {
   fs.mkdirSync(config.squidAclDir, { recursive: true });
   const src = `user_${userId}_src`;
-  const ip = ipForUser(userId);
+  const ip = userIpForUser(userId);
   const domainList = sanitizeDomains(domains).join(' ');
 
   let content = `acl ${src} src ${ip}/32\n`;

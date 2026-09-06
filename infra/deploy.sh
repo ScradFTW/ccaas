@@ -18,6 +18,6 @@ rsync -az --delete \
 
 echo "== Installing backend deps + restarting service =="
 # shellcheck disable=SC2029
-ssh "$HOST" "cd $REMOTE_DIR/apps/backend && sudo -u ccaas npm install --omit=dev && systemctl restart ccaas-backend"
+ssh "$HOST" "cd $REMOTE_DIR/apps/backend && npm install --omit=dev && systemctl restart ccaas-backend"
 
 echo "Done."

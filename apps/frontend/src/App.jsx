@@ -15,7 +15,15 @@ export function App() {
 
   if (state.loading) return null;
 
-  if (!state.email) return <Login />;
+  if (!state.email) {
+    return (
+      <Login
+        onLoggedIn={() => {
+          api.me().then((me) => setState({ loading: false, email: me.email }));
+        }}
+      />
+    );
+  }
 
   return (
     <Dashboard

@@ -111,6 +111,7 @@ body {
   margin: 1rem 0;
 }
 
+input,
 textarea {
   width: 100%;
   box-sizing: border-box;

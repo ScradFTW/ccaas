@@ -1,22 +1,44 @@
 import Dockerode from 'dockerode';
 import fs from 'node:fs';
+import path from 'node:path';
 import { config } from './config.js';
 
 export const docker = new Dockerode({ socketPath: '/var/run/docker.sock' });
 
-export const NETWORK_NAME = 'ccaas-internal';
-export const NETWORK_SUBNET = '10.77.0.0/24';
-export const NETWORK_GATEWAY = '10.77.0.1';
-export const PROXY_IP = '10.77.0.2';
 export const PROXY_PORT = 3128;
 export const PROXY_CONTAINER_NAME = 'ccaas-egress-proxy';
 export const SANDBOX_IMAGE = 'ccaas-sandbox:latest';
 export const PROXY_IMAGE = 'ccaas-egress-proxy:latest';
+const USER_NETWORK_PREFIX = 'ccaas-net-user-';
 
-export function ipForUser(userId) {
-  const host = 10 + Number(userId);
-  if (host > 250) throw new Error('user id out of range for the /24 subnet');
-  return `10.77.0.${host}`;
+// Each user gets their own /24 bridge network (10.77.<userId>.0/24), fully
+// isolated from every other user's network. The only thing attached to more
+// than one of these is the egress-proxy container, which gets a dedicated
+// IP on each one it joins — that's the sole path in or out for a user
+// container, and it's how one user's container can never reach another's.
+function assertUserIdInRange(userId) {
+  if (userId < 1 || userId > 250) throw new Error('user id out of range for the 10.77.x.0/24 scheme');
+}
+
+export function networkNameForUser(userId) {
+  return `${USER_NETWORK_PREFIX}${userId}`;
+}
+
+export function subnetForUser(userId) {
+  assertUserIdInRange(userId);
+  return `10.77.${userId}.0/24`;
+}
+
+export function gatewayForUser(userId) {
+  return `10.77.${userId}.1`;
+}
+
+export function proxyIpForUser(userId) {
+  return `10.77.${userId}.2`;
+}
+
+export function userIpForUser(userId) {
+  return `10.77.${userId}.10`;
 }
 
 export function containerNameForUser(userId) {
@@ -32,25 +54,50 @@ async function networkExists(name) {
   return networks.some((n) => n.Name === name);
 }
 
-export async function ensureNetwork() {
-  if (await networkExists(NETWORK_NAME)) return;
-  await docker.createNetwork({
-    Name: NETWORK_NAME,
-    Driver: 'bridge',
-    Internal: true,
-    IPAM: { Config: [{ Subnet: NETWORK_SUBNET, Gateway: NETWORK_GATEWAY }] },
-    Options: { 'com.docker.network.bridge.enable_icc': 'false' },
-  });
-}
-
 async function containerExists(name) {
   const containers = await docker.listContainers({ all: true, filters: JSON.stringify({ name: [name] }) });
   return containers.find((c) => c.Names.some((n) => n === `/${name}`));
 }
 
+async function ensureUserNetwork(userId) {
+  const name = networkNameForUser(userId);
+  if (await networkExists(name)) return name;
+  await docker.createNetwork({
+    Name: name,
+    Driver: 'bridge',
+    Internal: true,
+    IPAM: { Config: [{ Subnet: subnetForUser(userId), Gateway: gatewayForUser(userId) }] },
+  });
+  return name;
+}
+
+async function isProxyConnectedTo(networkName) {
+  const net = docker.getNetwork(networkName);
+  const info = await net.inspect();
+  return Boolean(info.Containers && Object.values(info.Containers).some((c) => c.Name === PROXY_CONTAINER_NAME));
+}
+
+async function connectProxyToUserNetwork(userId) {
+  const networkName = networkNameForUser(userId);
+  if (await isProxyConnectedTo(networkName)) return;
+  await docker.getNetwork(networkName).connect({
+    Container: PROXY_CONTAINER_NAME,
+    EndpointConfig: { IPAMConfig: { IPv4Address: proxyIpForUser(userId) } },
+  });
+}
+
+function ensurePlaceholderAclFile() {
+  // Squid's `include acl.d/*.conf` is fatal if the glob matches nothing,
+  // so the directory can never be truly empty.
+  const hasConfFile = fs.readdirSync(config.squidAclDir).some((f) => f.endsWith('.conf'));
+  if (!hasConfFile) {
+    fs.writeFileSync(path.join(config.squidAclDir, '_placeholder.conf'), '# intentionally empty\n');
+  }
+}
+
 export async function ensureEgressProxy() {
   fs.mkdirSync(config.squidAclDir, { recursive: true });
-  await ensureNetwork();
+  ensurePlaceholderAclFile();
 
   const existing = await containerExists(PROXY_CONTAINER_NAME);
   if (existing) {
@@ -58,6 +105,9 @@ export async function ensureEgressProxy() {
     return;
   }
 
+  // No explicit network here: it lands on the default `bridge` network,
+  // which already has NAT to the real internet. Per-user networks are
+  // attached afterwards, one per user, as those users come online.
   const container = await docker.createContainer({
     name: PROXY_CONTAINER_NAME,
     Image: PROXY_IMAGE,
@@ -67,15 +117,17 @@ export async function ensureEgressProxy() {
       RestartPolicy: { Name: 'unless-stopped' },
       Memory: 128 * 1024 * 1024,
     },
-    NetworkingConfig: {
-      EndpointsConfig: {
-        [NETWORK_NAME]: { IPAMConfig: { IPv4Address: PROXY_IP } },
-      },
-    },
   });
   await container.start();
-  // Second interface with real internet access, so it can actually forward allowed traffic.
-  await docker.getNetwork('bridge').connect({ Container: container.id });
+
+  // If the proxy container itself was recreated, re-join every per-user
+  // network that already existed so those users aren't cut off.
+  const networks = await docker.listNetworks({ filters: JSON.stringify({ name: [USER_NETWORK_PREFIX] }) });
+  for (const n of networks) {
+    if (!n.Name.startsWith(USER_NETWORK_PREFIX)) continue;
+    const userId = Number(n.Name.slice(USER_NETWORK_PREFIX.length));
+    await connectProxyToUserNetwork(userId);
+  }
 }
 
 export async function countRunningUserContainers() {
@@ -101,6 +153,8 @@ export async function getUserContainerInfo(userId) {
 export async function startUserContainer(userId) {
   await ensureEgressProxy();
   await ensureUserVolume(userId);
+  await ensureUserNetwork(userId);
+  await connectProxyToUserNetwork(userId);
 
   const name = containerNameForUser(userId);
   const existing = await containerExists(name);
@@ -127,9 +181,15 @@ export async function startUserContainer(userId) {
     Hostname: `user-${userId}`,
     Labels: { 'ccaas.managed': 'true', 'ccaas.user_id': String(userId) },
     Env: [
-      `HTTP_PROXY=http://${PROXY_IP}:${PROXY_PORT}`,
-      `HTTPS_PROXY=http://${PROXY_IP}:${PROXY_PORT}`,
+      // Both cases: curl/libcurl (and anything built on it, e.g. git) only
+      // honors lowercase https_proxy by design (httpoxy CVE mitigation),
+      // while some other tools only check the uppercase form.
+      `HTTP_PROXY=http://${proxyIpForUser(userId)}:${PROXY_PORT}`,
+      `http_proxy=http://${proxyIpForUser(userId)}:${PROXY_PORT}`,
+      `HTTPS_PROXY=http://${proxyIpForUser(userId)}:${PROXY_PORT}`,
+      `https_proxy=http://${proxyIpForUser(userId)}:${PROXY_PORT}`,
       'NO_PROXY=localhost,127.0.0.1',
+      'no_proxy=localhost,127.0.0.1',
       'TERM=xterm-256color',
     ],
     HostConfig: {
@@ -140,7 +200,7 @@ export async function startUserContainer(userId) {
     },
     NetworkingConfig: {
       EndpointsConfig: {
-        [NETWORK_NAME]: { IPAMConfig: { IPv4Address: ipForUser(userId) } },
+        [networkNameForUser(userId)]: { IPAMConfig: { IPv4Address: userIpForUser(userId) } },
       },
     },
   });

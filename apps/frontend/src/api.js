@@ -27,4 +27,15 @@ export const api = {
       body: JSON.stringify({ mode, domains }),
     }),
   logout: () => request('/auth/logout', { method: 'POST' }),
+  login: async (username, password) => {
+    const res = await fetch(`${BASE}/auth/login`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || `login failed: ${res.status}`);
+    return body;
+  },
 };

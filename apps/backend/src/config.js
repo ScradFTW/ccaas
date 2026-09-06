@@ -12,10 +12,15 @@ export const config = {
     .split(',')
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean),
+  // Optional: only needed once Google sign-in is enabled (see routes/auth.js).
   google: {
-    clientId: required('GOOGLE_CLIENT_ID'),
-    clientSecret: required('GOOGLE_CLIENT_SECRET'),
-    redirectUri: required('GOOGLE_REDIRECT_URI'),
+    clientId: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    redirectUri: process.env.GOOGLE_REDIRECT_URI,
+  },
+  admin: {
+    username: process.env.ADMIN_USERNAME,
+    password: process.env.ADMIN_PASSWORD,
   },
   sessionSecret: required('SESSION_SECRET'),
   publicBasePath: process.env.PUBLIC_BASE_PATH || '/ccaas',

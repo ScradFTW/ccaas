@@ -7,6 +7,32 @@ import { setSessionCookie, clearSessionCookie, setStateCookie, readState, clearS
 
 export const authRouter = express.Router();
 
+// Temporary single-admin login for testing, ahead of wiring up Google
+// sign-in for real. Swap the frontend back to the /auth/google flow below
+// once GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI and ALLOWED_EMAILS are set.
+authRouter.post('/login', express.json(), (req, res) => {
+  const { username, password } = req.body || {};
+
+  if (!config.admin.username || !config.admin.password) {
+    return res.status(500).json({ error: 'admin_login_not_configured' });
+  }
+
+  const usernameOk =
+    Buffer.byteLength(String(username || '')) === Buffer.byteLength(config.admin.username) &&
+    crypto.timingSafeEqual(Buffer.from(String(username || '')), Buffer.from(config.admin.username));
+  const passwordOk =
+    Buffer.byteLength(String(password || '')) === Buffer.byteLength(config.admin.password) &&
+    crypto.timingSafeEqual(Buffer.from(String(password || '')), Buffer.from(config.admin.password));
+
+  if (!usernameOk || !passwordOk) {
+    return res.status(401).json({ error: 'invalid_credentials' });
+  }
+
+  const user = findOrCreateUser({ sub: 'local-admin', email: config.admin.username });
+  setSessionCookie(res, { uid: user.id, email: user.email });
+  res.json({ ok: true });
+});
+
 authRouter.get('/google', (req, res) => {
   const state = crypto.randomBytes(16).toString('hex');
   setStateCookie(res, state);

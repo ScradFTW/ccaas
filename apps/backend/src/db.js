@@ -26,8 +26,10 @@ db.exec(`
 const DEFAULT_ALLOWLIST = [
   'api.anthropic.com',
   'console.anthropic.com',
+  'platform.claude.com',
   'claude.ai',
   'statsig.anthropic.com',
+  'sentry.io',
   'github.com',
   'raw.githubusercontent.com',
   'registry.npmjs.org',

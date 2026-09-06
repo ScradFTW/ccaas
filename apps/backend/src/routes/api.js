@@ -2,6 +2,7 @@ import express from 'express';
 import { requireAuth } from '../session.js';
 import { getEgressSettings, setEgressSettings } from '../db.js';
 import { writeUserAclFile, reconfigureSquid, sanitizeDomains, ensureAclFileForUser } from '../squid.js';
+import { touch } from '../activity.js';
 import {
   startUserContainer,
   stopUserContainer,
@@ -24,6 +25,7 @@ apiRouter.get('/session/status', async (req, res) => {
 
 apiRouter.post('/session/start', async (req, res) => {
   try {
+    touch(req.user.uid);
     await ensureEgressProxy();
     await ensureAclFileForUser(req.user.uid);
     await startUserContainer(req.user.uid);

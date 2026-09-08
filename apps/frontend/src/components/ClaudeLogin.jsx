@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Button, Card, InputGroup, Link, TextField } from '@heroui/react';
 import { api } from '../api';
 
 export function ClaudeLogin({ onLoggedIn }) {
@@ -38,41 +39,40 @@ export function ClaudeLogin({ onLoggedIn }) {
   }
 
   return (
-    <div className="centered">
-      <div className="card settings">
-        <h2>Connect your Claude account</h2>
-        <p>
-          Your sandbox runs Claude Code under your own Claude account, separate from your
-          website login.
-        </p>
+    <div className="h-full flex items-center justify-center">
+      <Card className="max-w-lg w-full">
+        <Card.Header><Card.Title>Connect your account</Card.Title></Card.Header>
+        <Card.Content className="flex flex-col gap-4">
+          <p className="text-sm text-muted">
+            Your sandbox runs your coding agent under your own account, separate from your website login.
+          </p>
 
-        {!url && (
-          <button className="button" onClick={start} disabled={busy}>
-            {busy ? 'Starting…' : 'Sign in with Claude'}
-          </button>
-        )}
-
-        {url && (
-          <>
-            <p>
-              1. Open this link and finish signing in:
-              <br />
-              <a href={url} target="_blank" rel="noopener noreferrer">
-                {url}
-              </a>
-            </p>
-            <p>2. Paste the code it gives you back here:</p>
-            <div className="row">
-              <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="paste code" />
-              <button className="button" onClick={submitCode} disabled={busy || !code.trim()}>
-                {busy ? 'Checking…' : 'Submit'}
-              </button>
+          {!url && (
+            <div>
+              <Button onPress={start} isDisabled={busy}>{busy ? 'Starting…' : 'Sign in'}</Button>
             </div>
-          </>
-        )}
+          )}
 
-        {error && <p className="error">{error}</p>}
-      </div>
+          {url && (
+            <>
+              <p className="text-sm">
+                1. Open this link and finish signing in:
+                <br/>
+                <Link href={url} target="_blank" rel="noopener noreferrer">{url}</Link>
+              </p>
+              <p className="text-sm">2. Paste the code it gives you back here:</p>
+              <div className="flex items-center gap-3">
+                <TextField aria-label="Login code" value={code} onChange={setCode} className="flex-1">
+                  <InputGroup><InputGroup.Input placeholder="paste code"/></InputGroup>
+                </TextField>
+                <Button onPress={submitCode} isDisabled={busy || !code.trim()}>{busy ? 'Checking…' : 'Submit'}</Button>
+              </div>
+            </>
+          )}
+
+          {error && <p className="text-danger text-sm">{error}</p>}
+        </Card.Content>
+      </Card>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Button, InputGroup, Link, TextField } from '@heroui/react';
 import { deriveChatItems, splitCodeSegments } from '../chatEvents';
 import { api } from '../api';
 
@@ -8,13 +9,11 @@ function RichText({ text }) {
     <>
       {segments.map((seg, i) =>
         seg.code ? (
-          <pre key={i} className="chat-code">
+          <pre key={i} className="bg-background border border-border rounded-md p-2 overflow-x-auto text-sm my-1">
             <code>{seg.text}</code>
           </pre>
         ) : (
-          <span key={i} className="chat-text">
-            {seg.text}
-          </span>
+          <span key={i}>{seg.text}</span>
         )
       )}
     </>
@@ -24,8 +23,8 @@ function RichText({ text }) {
 function ChatItem({ item }) {
   if (item.kind === 'user-text') {
     return (
-      <div className="chat-row chat-row-user">
-        <div className="chat-bubble chat-bubble-user">
+      <div className="flex justify-end">
+        <div className="max-w-[70%] rounded-2xl px-4 py-2 whitespace-pre-wrap break-words bg-accent text-accent-foreground">
           <RichText text={item.text} />
         </div>
       </div>
@@ -33,8 +32,8 @@ function ChatItem({ item }) {
   }
   if (item.kind === 'assistant-text') {
     return (
-      <div className="chat-row chat-row-assistant">
-        <div className="chat-bubble chat-bubble-assistant">
+      <div className="flex justify-start">
+        <div className="max-w-[70%] rounded-2xl px-4 py-2 whitespace-pre-wrap break-words bg-surface-secondary text-surface-secondary-foreground">
           <RichText text={item.text} />
         </div>
       </div>
@@ -42,12 +41,12 @@ function ChatItem({ item }) {
   }
   if (item.kind === 'tool') {
     return (
-      <div className="chat-row chat-row-assistant">
-        <div className="chat-tool-card">
-          <div className="chat-tool-name">🔧 {item.name}</div>
-          <pre className="chat-tool-input">{JSON.stringify(item.input, null, 2)}</pre>
+      <div className="flex justify-start">
+        <div className="max-w-[70%] bg-surface border border-border rounded-xl px-3 py-2 text-sm">
+          <div className="font-semibold text-accent mb-1">🔧 {item.name}</div>
+          <pre className="whitespace-pre-wrap break-words text-muted text-xs m-0">{JSON.stringify(item.input, null, 2)}</pre>
           {item.result != null && (
-            <pre className={`chat-tool-result ${item.isError ? 'chat-tool-error' : ''}`}>
+            <pre className={`whitespace-pre-wrap break-words text-xs mt-1 ${item.isError ? 'text-danger' : 'text-muted'}`}>
               {item.result.length > 800 ? `${item.result.slice(0, 800)}\n…` : item.result}
             </pre>
           )}
@@ -56,11 +55,7 @@ function ChatItem({ item }) {
     );
   }
   if (item.kind === 'error') {
-    return (
-      <div className="chat-row">
-        <div className="chat-error">{item.text}</div>
-      </div>
-    );
+    return <div className="text-danger text-sm">{item.text}</div>;
   }
   return null;
 }
@@ -127,13 +122,6 @@ export function Chat() {
     setBusy(true);
   }
 
-  function onKeyDown(e) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      send();
-    }
-  }
-
   async function newChat() {
     if (!window.confirm('Start a new conversation? Your files are untouched, only chat history resets.')) return;
     await api.resetChat();
@@ -144,39 +132,38 @@ export function Chat() {
   }
 
   return (
-    <div className="chat">
-      <div className="chat-toolbar">
-        <button className="link" onClick={newChat}>
-          + New chat
-        </button>
+    <div className="flex-1 min-h-0 flex flex-col">
+      <div className="flex justify-end px-4 pt-2">
+        <Link onPress={newChat} className="text-sm">+ New chat</Link>
       </div>
-      <div className="chat-scroll" ref={scrollRef}>
-        {items.map((item) => (
-          <ChatItem key={item.id} item={item} />
-        ))}
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto p-4 flex flex-col gap-3">
+        {items.map((item) => <ChatItem key={item.id} item={item} />)}
         {busy && (
-          <div className="chat-row chat-row-assistant">
-            <div className="chat-bubble chat-bubble-assistant chat-thinking">Thinking…</div>
+          <div className="flex justify-start">
+            <div className="max-w-[70%] rounded-2xl px-4 py-2 bg-surface-secondary text-muted italic">Thinking…</div>
           </div>
         )}
-        {fatal && (
-          <div className="chat-row">
-            <div className="chat-error">{fatal}</div>
-          </div>
-        )}
+        {fatal && <div className="text-danger text-sm">{fatal}</div>}
       </div>
-      <div className="chat-input-row">
-        <textarea
-          rows={2}
-          placeholder={connected ? 'Message Claude Code...' : 'Connecting…'}
+      <div className="flex gap-3 items-end px-4 py-3 bg-surface border-t border-separator">
+        <TextField
+          aria-label="Message your agent"
           value={input}
-          disabled={!connected}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={onKeyDown}
-        />
-        <button className="button" onClick={send} disabled={!connected || busy || !input.trim()}>
-          Send
-        </button>
+          onChange={setInput}
+          isDisabled={!connected}
+          className="flex-1"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              send();
+            }
+          }}
+        >
+          <InputGroup>
+            <InputGroup.TextArea rows={2} placeholder={connected ? 'Message your agent...' : 'Connecting…'}/>
+          </InputGroup>
+        </TextField>
+        <Button onPress={send} isDisabled={!connected || busy || !input.trim()}>Send</Button>
       </div>
     </div>
   );

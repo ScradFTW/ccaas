@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Button, Card, InputGroup, TextField } from '@heroui/react';
 import { api } from '../api';
 
 export function Login({ onLoggedIn }) {
@@ -22,29 +23,31 @@ export function Login({ onLoggedIn }) {
   }
 
   return (
-    <div className="centered">
-      <form className="card" onSubmit={handleSubmit}>
-        <h1>ccaas</h1>
-        <p>Run Claude Code in the cloud, in your own sandbox.</p>
-        <div className="mode-toggle">
-          <input
-            placeholder="username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            autoFocus
-          />
-          <input
-            type="password"
-            placeholder="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </div>
-        <button className="button" type="submit" disabled={submitting}>
-          {submitting ? 'Signing in...' : 'Sign in'}
-        </button>
-        {error && <p className="error">{error}</p>}
-      </form>
+    <div className="h-full flex items-center justify-center bg-background text-foreground">
+      <Card className="w-full max-w-sm">
+        <Card.Content>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4 text-center">
+            <h1 className="text-2xl font-bold">ccaas</h1>
+            <p className="text-muted text-sm">Run an AI coding agent in the cloud, in your own sandbox.</p>
+
+            <TextField aria-label="Username" value={username} onChange={setUsername} autoFocus>
+              <InputGroup>
+                <InputGroup.Input placeholder="username"/>
+              </InputGroup>
+            </TextField>
+            <TextField aria-label="Password" value={password} onChange={setPassword}>
+              <InputGroup>
+                <InputGroup.Input placeholder="password" type="password"/>
+              </InputGroup>
+            </TextField>
+
+            <Button type="submit" isDisabled={submitting}>
+              {submitting ? 'Signing in...' : 'Sign in'}
+            </Button>
+            {error && <p className="text-danger text-sm">{error}</p>}
+          </form>
+        </Card.Content>
+      </Card>
     </div>
   );
 }

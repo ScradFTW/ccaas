@@ -60,6 +60,12 @@ steps:
       - |
         gcloud secrets versions access latest --secret=ccaas-deploy-ssh-private-key > /workspace/ccaas_deploy_key
         chmod 600 /workspace/ccaas_deploy_key
+        # `gcloud compute ssh --ssh-key-file` refuses to use a private key
+        # with no matching .pub next to it — it prompts to regenerate both
+        # instead (confirmed interactively: this hangs/aborts non-interactively
+        # in Cloud Build). Derive the public half instead of storing it
+        # separately; it has to match gce_ccaas.tf's metadata ssh-keys value.
+        ssh-keygen -y -f /workspace/ccaas_deploy_key > /workspace/ccaas_deploy_key.pub
 
   # OS Login for the cloudbuild-app-deployer service account identity
   # (as opposed to a human user, which works fine on this same VM)

@@ -54,25 +54,37 @@ steps:
 
   - id: copy-to-vm
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
-    entrypoint: gcloud
+    entrypoint: sh
     args:
-      - compute
-      - scp
-      - --tunnel-through-iap
-      - --zone=${_ZONE}
-      - /workspace/ccaas.tar.gz
-      - ccaas-vm:/tmp/ccaas.tar.gz
+      - -c
+      - |
+        # A fresh OS Login SSH key (generated + uploaded on this container's
+        # first gcloud compute call) needs a few seconds to propagate to the
+        # VM's guest agent — the very first attempt reliably hits "Permission
+        # denied (publickey)" before that lands. Every ccaas deploy starts
+        # from a fresh container/fresh key, so this isn't a one-time fluke.
+        for i in 1 2 3 4 5; do
+          gcloud compute scp --tunnel-through-iap --zone=${_ZONE} \
+            /workspace/ccaas.tar.gz ccaas-vm:/tmp/ccaas.tar.gz && exit 0
+          echo "scp attempt $i failed, retrying in 15s..."
+          sleep 15
+        done
+        exit 1
 
   - id: deploy-on-vm
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
-    entrypoint: gcloud
+    entrypoint: sh
     args:
-      - compute
-      - ssh
-      - ccaas-vm
-      - --tunnel-through-iap
-      - --zone=${_ZONE}
-      - --command=sudo mkdir -p /opt/ccaas && sudo tar xzf /tmp/ccaas.tar.gz -C /opt/ccaas && sudo chown -R root:root /opt/ccaas && sudo bash /opt/ccaas/infra/gcp-deploy.sh ${_ARTIFACT_REGISTRY} ${SHORT_SHA}
+      - -c
+      - |
+        for i in 1 2 3 4 5; do
+          gcloud compute ssh ccaas-vm --tunnel-through-iap --zone=${_ZONE} \
+            --command="sudo mkdir -p /opt/ccaas && sudo tar xzf /tmp/ccaas.tar.gz -C /opt/ccaas && sudo chown -R root:root /opt/ccaas && sudo bash /opt/ccaas/infra/gcp-deploy.sh ${_ARTIFACT_REGISTRY} ${SHORT_SHA}" \
+            && exit 0
+          echo "ssh attempt $i failed, retrying in 15s..."
+          sleep 15
+        done
+        exit 1
 
 substitutions:
   # Must match bradjobe-dev-infra's var.zone (gce_ccaas.tf creates this VM

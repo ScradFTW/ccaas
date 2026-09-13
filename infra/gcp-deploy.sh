@@ -20,9 +20,28 @@ echo "== Installing backend dependencies =="
 cd "$APP_DIR/apps/backend"
 npm install --omit=dev
 
+echo "== Generating .env from Secret Manager =="
+# config.js only hard-requires SESSION_SECRET; GOOGLE_CLIENT_ID/SECRET are
+# read lazily (only needed once Google sign-in is actually used), so an
+# empty secret there degrades that one feature rather than blocking startup.
+{
+  echo "PORT=8081"
+  echo "ALLOWED_EMAILS=$(gcloud secrets versions access latest --secret=ccaas-allowed-emails 2>/dev/null || true)"
+  echo "GOOGLE_CLIENT_ID=$(gcloud secrets versions access latest --secret=ccaas-google-oauth-client-id 2>/dev/null || true)"
+  echo "GOOGLE_CLIENT_SECRET=$(gcloud secrets versions access latest --secret=ccaas-google-oauth-client-secret 2>/dev/null || true)"
+  echo "GOOGLE_REDIRECT_URI=https://bradjobe.dev/ccaas/auth/google/callback"
+  echo "SESSION_SECRET=$(gcloud secrets versions access latest --secret=ccaas-session-secret)"
+  echo "PUBLIC_BASE_PATH=/ccaas"
+  echo "DATA_DIR=/srv/ccaas/data"
+  echo "SQUID_ACL_DIR=/srv/ccaas/squid-acl"
+  echo "MAX_CONCURRENT_CONTAINERS=2"
+  echo "IDLE_TIMEOUT_MINUTES=20"
+} > "$APP_DIR/apps/backend/.env"
+chmod 600 "$APP_DIR/apps/backend/.env"
+
 echo "== nginx =="
 cp "$APP_DIR/infra/ccaas-nginx.conf" /etc/nginx/snippets/ccaas.conf
-if ! grep -q "connection_upgrade" /etc/nginx/nginx.conf; then
+if ! grep -rq "connection_upgrade" /etc/nginx/nginx.conf /etc/nginx/conf.d/*.conf 2>/dev/null; then
   echo "NOTE: add the \$http_upgrade -> \$connection_upgrade map to the http {} block"
   echo "      in /etc/nginx/nginx.conf by hand once — see infra/ccaas-nginx.conf's header."
 fi

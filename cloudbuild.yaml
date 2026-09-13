@@ -45,11 +45,12 @@ steps:
       - |
         apk add --no-cache tar >/dev/null
         tar czf /workspace/ccaas.tar.gz \
+          --warning=no-file-changed \
           --exclude=.git \
           --exclude=node_modules \
           --exclude=apps/backend/.env \
           --exclude=apps/frontend/node_modules \
-          .
+          . || [ $? -eq 1 ]
 
   - id: copy-to-vm
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
@@ -74,7 +75,10 @@ steps:
       - --command=sudo mkdir -p /opt/ccaas && sudo tar xzf /tmp/ccaas.tar.gz -C /opt/ccaas && sudo chown -R root:root /opt/ccaas && sudo bash /opt/ccaas/infra/gcp-deploy.sh ${_ARTIFACT_REGISTRY} ${SHORT_SHA}
 
 substitutions:
-  _ZONE: northamerica-northeast1-a
+  # Must match bradjobe-dev-infra's var.zone (gce_ccaas.tf creates this VM
+  # there) — -c, not -a, since that's the only zone in this region with
+  # T4 GPU capacity and everything shares one zone. Update both together.
+  _ZONE: northamerica-northeast1-c
   _ARTIFACT_REGISTRY: northamerica-northeast1-docker.pkg.dev/bradjobe-dev/apps
 
 options:

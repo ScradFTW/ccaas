@@ -52,39 +52,43 @@ steps:
           --exclude=apps/frontend/node_modules \
           . || [ $? -eq 1 ]
 
-  - id: copy-to-vm
+  - id: fetch-deploy-key
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
     entrypoint: sh
     args:
       - -c
       - |
-        # A fresh OS Login SSH key (generated + uploaded on this container's
-        # first gcloud compute call) needs a few seconds to propagate to the
-        # VM's guest agent — the very first attempt reliably hits "Permission
-        # denied (publickey)" before that lands. Every ccaas deploy starts
-        # from a fresh container/fresh key, so this isn't a one-time fluke.
-        for i in 1 2 3 4 5; do
-          gcloud compute scp --tunnel-through-iap --zone=${_ZONE} \
-            /workspace/ccaas.tar.gz ccaas-vm:/tmp/ccaas.tar.gz && exit 0
-          echo "scp attempt $i failed, retrying in 15s..."
-          sleep 15
-        done
-        exit 1
+        gcloud secrets versions access latest --secret=ccaas-deploy-ssh-private-key > /workspace/ccaas_deploy_key
+        chmod 600 /workspace/ccaas_deploy_key
+
+  # OS Login for the cloudbuild-app-deployer service account identity
+  # (as opposed to a human user, which works fine on this same VM)
+  # consistently failed with "Permission denied (publickey)" — see
+  # bradjobe-dev-infra's gce_ccaas.tf for the full explanation. This VM
+  # now uses a dedicated metadata SSH key instead, fetched above.
+  - id: copy-to-vm
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - compute
+      - scp
+      - --tunnel-through-iap
+      - --zone=${_ZONE}
+      - --ssh-key-file=/workspace/ccaas_deploy_key
+      - /workspace/ccaas.tar.gz
+      - clouddeploy@ccaas-vm:/tmp/ccaas.tar.gz
 
   - id: deploy-on-vm
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
-    entrypoint: sh
+    entrypoint: gcloud
     args:
-      - -c
-      - |
-        for i in 1 2 3 4 5; do
-          gcloud compute ssh ccaas-vm --tunnel-through-iap --zone=${_ZONE} \
-            --command="sudo mkdir -p /opt/ccaas && sudo tar xzf /tmp/ccaas.tar.gz -C /opt/ccaas && sudo chown -R root:root /opt/ccaas && sudo bash /opt/ccaas/infra/gcp-deploy.sh ${_ARTIFACT_REGISTRY} ${SHORT_SHA}" \
-            && exit 0
-          echo "ssh attempt $i failed, retrying in 15s..."
-          sleep 15
-        done
-        exit 1
+      - compute
+      - ssh
+      - clouddeploy@ccaas-vm
+      - --tunnel-through-iap
+      - --zone=${_ZONE}
+      - --ssh-key-file=/workspace/ccaas_deploy_key
+      - --command=sudo mkdir -p /opt/ccaas && sudo tar xzf /tmp/ccaas.tar.gz -C /opt/ccaas && sudo chown -R root:root /opt/ccaas && sudo bash /opt/ccaas/infra/gcp-deploy.sh ${_ARTIFACT_REGISTRY} ${SHORT_SHA}
 
 substitutions:
   # Must match bradjobe-dev-infra's var.zone (gce_ccaas.tf creates this VM

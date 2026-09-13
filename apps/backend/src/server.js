@@ -18,6 +18,11 @@ const FRONTEND_DIST = path.join(__dirname, '..', '..', 'frontend', 'dist');
 const app = express();
 app.set('trust proxy', true);
 
+// Unauthenticated on purpose: the load balancer's health check hits this
+// directly (see bradjobe-dev-infra's gce_ccaas.tf google_compute_health_check),
+// same convention as the Python backends' /health routes.
+app.get('/health', (req, res) => res.json({ status: 'ok' }));
+
 app.use('/auth', authRouter);
 app.use('/api', apiRouter);
 app.use(express.static(FRONTEND_DIST));

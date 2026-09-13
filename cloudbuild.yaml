@@ -1,0 +1,83 @@
+# Deploys on every push to main — see bradjobe-dev-infra's
+# cloudbuild_triggers.tf (google_cloudbuild_trigger.app["ccaas"]). Unlike
+# the Cloud Run services, ccaas has no `gcloud run deploy` target: it's a
+# GCE VM (needs a real Docker daemon for dockerode) with no public IP, so
+# every step below reaches it through an IAP tunnel.
+steps:
+  - id: build-frontend
+    name: node:22-slim
+    dir: apps/frontend
+    entrypoint: sh
+    args:
+      - -c
+      - "npm install && npm run build"
+
+  - id: build-sandbox-image
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - ${_ARTIFACT_REGISTRY}/ccaas-sandbox:${SHORT_SHA}
+      - docker/sandbox
+
+  - id: build-proxy-image
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - ${_ARTIFACT_REGISTRY}/ccaas-egress-proxy:${SHORT_SHA}
+      - docker/proxy
+
+  - id: push-images
+    name: gcr.io/cloud-builders/docker
+    entrypoint: sh
+    args:
+      - -c
+      - |
+        docker push ${_ARTIFACT_REGISTRY}/ccaas-sandbox:${SHORT_SHA}
+        docker push ${_ARTIFACT_REGISTRY}/ccaas-egress-proxy:${SHORT_SHA}
+
+  - id: package
+    name: alpine
+    entrypoint: sh
+    args:
+      - -c
+      - |
+        apk add --no-cache tar >/dev/null
+        tar czf /workspace/ccaas.tar.gz \
+          --exclude=.git \
+          --exclude=node_modules \
+          --exclude=apps/backend/.env \
+          --exclude=apps/frontend/node_modules \
+          .
+
+  - id: copy-to-vm
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - compute
+      - scp
+      - --tunnel-through-iap
+      - --zone=${_ZONE}
+      - /workspace/ccaas.tar.gz
+      - ccaas-vm:/tmp/ccaas.tar.gz
+
+  - id: deploy-on-vm
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - compute
+      - ssh
+      - ccaas-vm
+      - --tunnel-through-iap
+      - --zone=${_ZONE}
+      - --command=sudo mkdir -p /opt/ccaas && sudo tar xzf /tmp/ccaas.tar.gz -C /opt/ccaas && sudo chown -R root:root /opt/ccaas && sudo bash /opt/ccaas/infra/gcp-deploy.sh ${_ARTIFACT_REGISTRY} ${SHORT_SHA}
+
+substitutions:
+  _ZONE: northamerica-northeast1-a
+  _ARTIFACT_REGISTRY: northamerica-northeast1-docker.pkg.dev/bradjobe-dev/apps
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 1200s

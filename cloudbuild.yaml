@@ -4,6 +4,24 @@
 # GCE VM (needs a real Docker daemon for dockerode) with no public IP, so
 # every step below reaches it through an IAP tunnel.
 steps:
+  # Runs the backend's unit test suite (node:test) before anything gets
+  # built or deployed -- a failing test here fails the whole build, since
+  # Cloud Build stops at the first step that exits non-zero. SESSION_SECRET
+  # and DATA_DIR are just throwaway values for the test run: config.js
+  # requires SESSION_SECRET to be set to import at all, and db.js opens a
+  # SQLite file under DATA_DIR as soon as it's imported.
+  - id: test-backend
+    name: node:22-slim
+    dir: apps/backend
+    entrypoint: sh
+    args:
+      - -c
+      - |
+        export SESSION_SECRET=cloudbuild-test-secret
+        export DATA_DIR=/tmp/ccaas-test-data
+        npm ci
+        npm test
+
   - id: build-frontend
     name: node:22-slim
     dir: apps/frontend

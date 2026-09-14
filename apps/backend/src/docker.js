@@ -196,6 +196,9 @@ export async function startUserContainer(userId) {
       Binds: [`${volumeNameForUser(userId)}:/home/coder`],
       Memory: 640 * 1024 * 1024,
       NanoCpus: 500_000_000,
+      // Without this, a fork bomb inside one user's sandbox can exhaust the
+      // host's PID table and take down every other tenant's container.
+      PidsLimit: 256,
       RestartPolicy: { Name: 'unless-stopped' },
     },
     NetworkingConfig: {

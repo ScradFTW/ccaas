@@ -42,6 +42,12 @@ export function makeLineSplitter(onLine) {
   };
 }
 
+// Bounds how much any single exec's stdout/stderr collector will buffer in
+// this shared backend process -- e.g. a cron job's `claude -p` prompt
+// output has no other size limit on it before this, so a runaway or
+// malicious prompt could otherwise grow memory unboundedly.
+const MAX_COLLECT_BYTES = 10 * 1024 * 1024;
+
 // Like collectUntilClose, but keeps stdout separate from stderr -- for
 // commands whose stdout must be parsed as clean JSON, where stderr (e.g.
 // warnings) must not get interleaved into that buffer.
@@ -54,7 +60,10 @@ export function collectStdoutUntilClose(stream, stdout, stderr, timeoutMs = 1500
       done = true;
       resolve(out);
     };
-    stdout.on('data', (c) => (out += c.toString('utf8')));
+    stdout.on('data', (c) => {
+      if (out.length >= MAX_COLLECT_BYTES) return;
+      out += c.toString('utf8');
+    });
     stderr.on('data', () => {}); // drained so it can't block the pipe; not logged here
     stream.on('end', finish);
     stream.on('close', finish);
@@ -75,8 +84,12 @@ export function collectUntilClose(stream, stdout, stderr, timeoutMs = 15000) {
       done = true;
       resolve(buf);
     };
-    stdout.on('data', (c) => (buf += c.toString('utf8')));
-    stderr.on('data', (c) => (buf += c.toString('utf8')));
+    const append = (c) => {
+      if (buf.length >= MAX_COLLECT_BYTES) return;
+      buf += c.toString('utf8');
+    };
+    stdout.on('data', append);
+    stderr.on('data', append);
     stream.on('end', finish);
     stream.on('close', finish);
     setTimeout(finish, timeoutMs);

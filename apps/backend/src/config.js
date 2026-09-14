@@ -28,4 +28,6 @@ export const config = {
   squidAclDir: process.env.SQUID_ACL_DIR || '/srv/ccaas/squid-acl',
   maxConcurrentContainers: Number(process.env.MAX_CONCURRENT_CONTAINERS || 2),
   idleTimeoutMs: Number(process.env.IDLE_TIMEOUT_MINUTES || 20) * 60 * 1000,
+  maxVolumeMb: Number(process.env.MAX_VOLUME_MB || 1024),
+  maxCronJobsPerUser: Number(process.env.MAX_CRON_JOBS_PER_USER || 10),
 };

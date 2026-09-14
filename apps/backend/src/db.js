@@ -3,16 +3,28 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { config } from './config.js';
 
-fs.mkdirSync(config.dataDir, { recursive: true });
+fs.mkdirSync(config.dataDir, { recursive: true, mode: 0o700 });
+fs.chmodSync(config.dataDir, 0o700); // mkdirSync's mode is masked by umask on an already-existing dir
 
-export const db = new Database(path.join(config.dataDir, 'ccaas.sqlite'));
+const DB_PATH = path.join(config.dataDir, 'ccaas.sqlite');
+export const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
+
+// better-sqlite3 creates these at the umask's default mode (typically
+// 644 -- world-readable), and this file holds emails, cron prompts, and
+// session_version for every user, so tighten it explicitly rather than
+// trusting the process umask. WAL mode also creates -wal/-shm siblings.
+for (const suffix of ['', '-wal', '-shm']) {
+  const p = `${DB_PATH}${suffix}`;
+  if (fs.existsSync(p)) fs.chmodSync(p, 0o600);
+}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     google_sub TEXT UNIQUE NOT NULL,
     email TEXT NOT NULL,
+    session_version INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
@@ -49,6 +61,14 @@ db.exec(`
   );
 `);
 
+// Migration for databases created before session_version existed --
+// CREATE TABLE IF NOT EXISTS above is a no-op against an existing table.
+try {
+  db.exec('ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0');
+} catch {
+  // Column already exists.
+}
+
 const DEFAULT_ALLOWLIST = [
   'api.anthropic.com',
   'console.anthropic.com',
@@ -79,6 +99,21 @@ export function findOrCreateUser({ sub, email }) {
   );
 
   return user;
+}
+
+// Session cookies are stateless (HMAC-signed, no server-side session
+// store), so logging out can't just delete a row -- it bumps this counter
+// instead, and every cookie carries the version it was issued under.
+// verifySessionCookieValue rejects any cookie whose version doesn't match
+// current, so a stolen cookie is invalidated the moment the real user
+// logs out, without needing to track individual sessions.
+export function getSessionVersion(userId) {
+  const row = db.prepare('SELECT session_version FROM users WHERE id = ?').get(userId);
+  return row ? row.session_version : null;
+}
+
+export function bumpSessionVersion(userId) {
+  db.prepare('UPDATE users SET session_version = session_version + 1 WHERE id = ?').run(userId);
 }
 
 export function getEgressSettings(userId) {
@@ -112,6 +147,10 @@ export function setClaudeSessionId(userId, sessionId) {
 
 export function listCronJobs(userId) {
   return db.prepare('SELECT * FROM cron_jobs WHERE user_id = ? ORDER BY id').all(userId);
+}
+
+export function countCronJobs(userId) {
+  return db.prepare('SELECT COUNT(*) AS n FROM cron_jobs WHERE user_id = ?').get(userId).n;
 }
 
 export function createCronJob({ userId, prompt, cronExpr, nextRunAt }) {

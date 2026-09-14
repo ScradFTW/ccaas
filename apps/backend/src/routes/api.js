@@ -4,6 +4,7 @@ import {
   getEgressSettings,
   setEgressSettings,
   listCronJobs,
+  countCronJobs,
   createCronJob,
   deleteCronJob,
   setCronJobEnabled,
@@ -12,6 +13,7 @@ import {
   upsertPublishedSite,
   deletePublishedSite,
 } from '../db.js';
+import { config } from '../config.js';
 import { writeUserAclFile, reconfigureSquid, sanitizeDomains, ensureAclFileForUser } from '../squid.js';
 import { touch } from '../activity.js';
 import {
@@ -25,7 +27,14 @@ import { getAuthStatus, startLogin, submitLoginCode } from '../claudeAuth.js';
 import { nextRunAtIso } from '../cronScheduler.js';
 import { resetChatSession } from '../claudeChat.js';
 import { listDir, downloadFile } from '../files.js';
-import { validateSlug, validateSourceDir, writeSiteConfig, removeSiteConfig, reloadNginx } from '../sites.js';
+import {
+  validateSlug,
+  validateSourceDir,
+  writeSiteConfig,
+  removeSiteConfig,
+  revokeNginxAccessToVolume,
+  reloadNginx,
+} from '../sites.js';
 
 export const apiRouter = express.Router();
 apiRouter.use(requireAuth);
@@ -104,6 +113,10 @@ apiRouter.post('/cron', express.json(), (req, res) => {
   const cronExpr = String(req.body?.cronExpr || '').trim();
   if (!prompt) return res.status(400).json({ error: 'prompt_required' });
 
+  if (countCronJobs(req.user.uid) >= config.maxCronJobsPerUser) {
+    return res.status(400).json({ error: 'too_many_cron_jobs' });
+  }
+
   let nextRunAt;
   try {
     nextRunAt = nextRunAtIso(cronExpr);
@@ -143,6 +156,7 @@ apiRouter.get('/files/download', async (req, res) => {
     res.send(buffer);
   } catch (err) {
     if (err.message === 'invalid_path') return res.status(400).json({ error: 'invalid_path' });
+    if (err.message === 'file_too_large') return res.status(413).json({ error: 'file_too_large' });
     console.error('download file failed', err);
     res.status(500).json({ error: 'download_failed' });
   }
@@ -187,6 +201,7 @@ apiRouter.delete('/sites', async (req, res) => {
   try {
     removeSiteConfig(existing.slug);
     await reloadNginx();
+    await revokeNginxAccessToVolume(req.user.uid);
     deletePublishedSite(req.user.uid);
     res.json({ ok: true });
   } catch (err) {
@@ -201,7 +216,24 @@ apiRouter.get('/settings/egress', (req, res) => {
 
 apiRouter.post('/settings/egress', express.json(), async (req, res) => {
   const mode = req.body.mode === 'block' ? 'block' : 'allow';
-  const domains = sanitizeDomains(req.body.domains);
+  const submitted = Array.isArray(req.body.domains) ? req.body.domains : [];
+
+  // Every user's ACL file gets concatenated into one shared squid config
+  // (see squid.js) -- an unbounded per-user list would let one user bloat
+  // reconfigure time / memory for the proxy every other tenant shares.
+  if (submitted.length > 200) {
+    return res.status(400).json({ error: 'too_many_domains' });
+  }
+
+  const domains = sanitizeDomains(submitted);
+
+  // Reject rather than silently drop invalid entries: in "block" mode a
+  // silently-emptied domain list collapses squid's ACL into allowing all
+  // egress (nothing left to match against the deny rule) -- the opposite
+  // of what the user asked for, and they'd have no way to notice.
+  if (domains.length !== submitted.length) {
+    return res.status(400).json({ error: 'invalid_domains' });
+  }
 
   setEgressSettings(req.user.uid, { mode, domains });
   writeUserAclFile(req.user.uid, { mode, domains });

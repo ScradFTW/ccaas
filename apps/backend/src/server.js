@@ -9,6 +9,7 @@ import { apiRouter } from './routes/api.js';
 import { getSessionFromRequest } from './session.js';
 import { handleChatConnection } from './chatSocket.js';
 import { startIdleSweep } from './idleSweep.js';
+import { startVolumeQuotaSweep } from './volumeQuotaSweep.js';
 import { startCronScheduler } from './cronScheduler.js';
 import { ensureEgressProxy } from './docker.js';
 
@@ -34,30 +35,45 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
 
 server.on('upgrade', (req, socket, head) => {
-  if (req.url !== '/ws/chat') {
-    socket.destroy();
-    return;
-  }
+  try {
+    if (req.url !== '/ws/chat') {
+      socket.destroy();
+      return;
+    }
 
-  const session = getSessionFromRequest(req);
-  if (!session) {
-    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-    socket.destroy();
-    return;
-  }
+    const session = getSessionFromRequest(req);
+    if (!session) {
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+      socket.destroy();
+      return;
+    }
 
-  wss.handleUpgrade(req, socket, head, (ws) => {
-    handleChatConnection(ws, session.uid).catch((err) => {
-      console.error('chat connection failed', err);
-      ws.close();
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      handleChatConnection(ws, session.uid).catch((err) => {
+        console.error('chat connection failed', err);
+        ws.close();
+      });
     });
-  });
+  } catch (err) {
+    console.error('upgrade handler failed', err);
+    socket.destroy();
+  }
+});
+
+// A single malformed request must never take the whole process down —
+// this is the last line of defense on top of the try/catch above.
+process.on('uncaughtException', (err) => {
+  console.error('uncaught exception', err);
+});
+process.on('unhandledRejection', (err) => {
+  console.error('unhandled rejection', err);
 });
 
 ensureEgressProxy()
   .catch((err) => console.error('failed to start egress proxy on boot', err))
   .finally(() => {
     startIdleSweep();
+    startVolumeQuotaSweep();
     startCronScheduler();
     server.listen(config.port, '127.0.0.1', () => {
       console.log(`ccaas-backend listening on 127.0.0.1:${config.port}`);

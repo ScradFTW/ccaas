@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { config } from './config.js';
+import { getSessionVersion } from './db.js';
 
 const COOKIE_NAME = 'ccaas_session';
 const STATE_COOKIE_NAME = 'ccaas_oauth_state';
@@ -14,7 +15,8 @@ function sign(payloadB64) {
 }
 
 export function createSessionCookieValue(data) {
-  const payload = b64url(JSON.stringify({ ...data, iat: Date.now() }));
+  const sv = getSessionVersion(data.uid) ?? 0;
+  const payload = b64url(JSON.stringify({ ...data, sv, iat: Date.now() }));
   return `${payload}.${sign(payload)}`;
 }
 
@@ -22,11 +24,19 @@ export function verifySessionCookieValue(value) {
   if (!value) return null;
   const [payload, sig] = value.split('.');
   if (!payload || !sig) return null;
-  const expected = sign(payload);
-  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+  let sigBuf, expectedBuf;
+  try {
+    sigBuf = Buffer.from(sig, 'base64url');
+    expectedBuf = Buffer.from(sign(payload), 'base64url');
+  } catch {
+    return null;
+  }
+  if (sigBuf.length !== expectedBuf.length) return null;
+  if (!crypto.timingSafeEqual(sigBuf, expectedBuf)) return null;
   try {
     const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
     if (Date.now() - data.iat > MAX_AGE_MS) return null;
+    if (data.sv !== getSessionVersion(data.uid)) return null;
     return data;
   } catch {
     return null;

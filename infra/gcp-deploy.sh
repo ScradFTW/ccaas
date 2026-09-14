@@ -23,6 +23,12 @@ echo "== Writing .env from Secret Manager =="
 # service account (already granted secretmanager.secretAccessor on each
 # of these — see bradjobe-dev-infra's secrets.tf), every deploy.
 ENV_FILE="$APP_DIR/apps/backend/.env"
+# Created with 600 perms up front (touch + chmod before any content is
+# written) rather than chmod'd after the fact -- `{ ... } > "$ENV_FILE"`
+# creates the file at the umask's default mode first, which is
+# world-readable long enough for another local process to read secrets out
+# of it before the chmod below ever runs.
+( umask 077 && : > "$ENV_FILE" )
 {
   echo "PORT=8081"
   echo "ALLOWED_EMAILS=$(gcloud secrets versions access latest --secret=ccaas-allowed-emails 2>/dev/null || true)"
@@ -56,6 +62,9 @@ if ! grep -rq "snippets/ccaas.conf" /etc/nginx/sites-available/default 2>/dev/nu
 fi
 mkdir -p /etc/nginx/ccaas-sites
 chown ccaas:ccaas /etc/nginx/ccaas-sites
+cp "$APP_DIR/infra/ccaas-grant-nginx-access.sh" /usr/local/sbin/ccaas-grant-nginx-access.sh
+cp "$APP_DIR/infra/ccaas-revoke-nginx-access.sh" /usr/local/sbin/ccaas-revoke-nginx-access.sh
+chmod 755 /usr/local/sbin/ccaas-grant-nginx-access.sh /usr/local/sbin/ccaas-revoke-nginx-access.sh
 cp "$APP_DIR/infra/ccaas-nginx-reload.sudoers" /etc/sudoers.d/ccaas-nginx-reload
 chmod 440 /etc/sudoers.d/ccaas-nginx-reload
 visudo -c

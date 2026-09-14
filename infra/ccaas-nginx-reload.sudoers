@@ -1,3 +1,4 @@
 ccaas ALL=(root) NOPASSWD: /usr/sbin/nginx -t
 ccaas ALL=(root) NOPASSWD: /usr/bin/systemctl reload nginx
 ccaas ALL=(root) NOPASSWD: /usr/local/sbin/ccaas-grant-nginx-access.sh
+ccaas ALL=(root) NOPASSWD: /usr/local/sbin/ccaas-revoke-nginx-access.sh

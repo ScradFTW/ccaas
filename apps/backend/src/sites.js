@@ -33,12 +33,17 @@ export function validateSlug(slug) {
   return slug;
 }
 
-// Deliberately narrow: letters/digits/._- per path segment, no "..", no
-// characters that could break out of the generated nginx config (this
-// string ends up inside a config file we then ask nginx to load).
+// Deliberately narrow: letters/digits/._- per path segment, no characters
+// that could break out of the generated nginx config (this string ends up
+// inside a config file we then ask nginx to load). SAFE_PATH_RE alone is
+// NOT enough: "." is an allowed character, so a segment of exactly ".."
+// still matches the regex -- each segment must be checked individually to
+// actually reject "..".
 export function validateSourceDir(sourceDir) {
   const clean = String(sourceDir || '').replace(/^\/+/, '').replace(/\/+$/, '');
   if (!clean || !SAFE_PATH_RE.test(clean)) throw new Error('invalid_source_dir');
+  const segments = clean.split('/');
+  if (segments.some((seg) => seg === '.' || seg === '..')) throw new Error('invalid_source_dir');
   return clean;
 }
 
@@ -57,6 +62,14 @@ export async function grantNginxAccessToVolume(userId) {
   await execFileAsync('sudo', ['/usr/local/sbin/ccaas-grant-nginx-access.sh', String(userId)]);
 }
 
+// Reverses grantNginxAccessToVolume once a user's site is unpublished --
+// without this, nginx keeps traversal access to every volume it was ever
+// granted access to, forever, regardless of whether that user still
+// publishes anything.
+export async function revokeNginxAccessToVolume(userId) {
+  await execFileAsync('sudo', ['/usr/local/sbin/ccaas-revoke-nginx-access.sh', String(userId)]);
+}
+
 function siteConfigPath(slug) {
   return path.join(SITES_DIR, `${slug}.conf`);
 }
@@ -64,7 +77,24 @@ function siteConfigPath(slug) {
 export async function writeSiteConfig(userId, slug, sourceDir) {
   await grantNginxAccessToVolume(userId);
   const mountpoint = await getVolumeMountpoint(userId);
-  const fullDir = `${path.posix.join(mountpoint, sourceDir)}/`;
+  const joined = path.posix.join(mountpoint, sourceDir);
+
+  // Defense in depth beyond validateSourceDir's segment check: a symlink
+  // planted inside the volume could still resolve outside of it, so
+  // confirm containment against the REAL (symlink-resolved) mountpoint
+  // path, not just the string we joined.
+  const realMountpoint = fs.realpathSync(mountpoint);
+  let realDir;
+  try {
+    realDir = fs.realpathSync(joined);
+  } catch {
+    throw new Error('invalid_source_dir');
+  }
+  if (realDir !== realMountpoint && !realDir.startsWith(`${realMountpoint}/`)) {
+    throw new Error('invalid_source_dir');
+  }
+
+  const fullDir = `${realDir}/`;
   const content = `location /sites/${slug}/ {\n    alias ${fullDir};\n    try_files $uri $uri/ =404;\n}\n`;
   fs.mkdirSync(SITES_DIR, { recursive: true });
   fs.writeFileSync(siteConfigPath(slug), content);

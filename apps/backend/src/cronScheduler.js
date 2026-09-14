@@ -68,24 +68,33 @@ export function startCronScheduler() {
       return;
     }
 
-    for (const job of due) {
-      try {
-        await runJob(job);
-      } catch (err) {
-        console.error(`cron job ${job.id} failed`, err);
-        // Push next_run_at forward by one interval so a persistently
-        // failing job doesn't spin every tick.
+    // Run all due jobs concurrently rather than one at a time: each
+    // runJob() can block for minutes (execInContainer's own timeout), and
+    // a sequential `for` loop here meant one slow or misbehaving user's
+    // job starved every other tenant's cron jobs from running at all until
+    // it finished. Concurrency is still bounded -- startUserContainer's
+    // own maxConcurrentContainers check throws ServerAtCapacityError once
+    // the host is full, same as it does for interactive session starts.
+    await Promise.allSettled(
+      due.map(async (job) => {
         try {
-          recordCronRun(job.id, {
-            sessionId: job.session_id,
-            nextRunAt: nextRunAtIso(job.cron_expr),
-            lastResult: String(err.message || err),
-            lastIsError: true,
-          });
-        } catch (recordErr) {
-          console.error(`cron job ${job.id}: failed to record failure`, recordErr);
+          await runJob(job);
+        } catch (err) {
+          console.error(`cron job ${job.id} failed`, err);
+          // Push next_run_at forward by one interval so a persistently
+          // failing job doesn't spin every tick.
+          try {
+            recordCronRun(job.id, {
+              sessionId: job.session_id,
+              nextRunAt: nextRunAtIso(job.cron_expr),
+              lastResult: String(err.message || err),
+              lastIsError: true,
+            });
+          } catch (recordErr) {
+            console.error(`cron job ${job.id}: failed to record failure`, recordErr);
+          }
         }
-      }
-    }
+      })
+    );
   }, CHECK_INTERVAL_MS).unref();
 }

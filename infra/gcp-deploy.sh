@@ -70,6 +70,13 @@ chmod 440 /etc/sudoers.d/ccaas-nginx-reload
 visudo -c
 nginx -t && systemctl reload nginx
 
+echo "== egress proxy =="
+# ensureEgressProxy (apps/backend/src/docker.js) only creates the proxy
+# container when it's missing, so an existing one would keep running the
+# old image forever. Removing it here makes the backend restart below
+# recreate it from the image just pulled, re-joining every user network.
+docker rm -f ccaas-egress-proxy >/dev/null 2>&1 || true
+
 echo "== systemd =="
 cp "$APP_DIR/infra/ccaas-backend.service" /etc/systemd/system/ccaas-backend.service
 systemctl daemon-reload
